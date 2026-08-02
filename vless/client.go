@@ -38,14 +38,8 @@ func NewClient(userId string, flow string, logger logger.Logger) (*Client, error
 }
 
 func (c *Client) prepareConn(conn net.Conn, tlsConn net.Conn) (net.Conn, error) {
-	return c.prepareConnWithOptions(conn, tlsConn, true)
-}
-
-func (c *Client) prepareConnWithOptions(conn net.Conn, tlsConn net.Conn, canSplice bool) (net.Conn, error) {
 	if c.flow == FlowVision {
-		// Unwrap to find the real TLS connection
-		actualTLSConn := unwrapConn(tlsConn)
-		protocolConn, err := NewVisionConn(conn, actualTLSConn, c.key, c.logger, canSplice)
+		protocolConn, err := NewVisionConn(conn, tlsConn, c.key, c.logger)
 		if err != nil {
 			return nil, E.Cause(err, "initialize vision")
 		}
@@ -65,14 +59,6 @@ func (c *Client) DialConn(conn net.Conn, destination M.Socksaddr) (net.Conn, err
 
 func (c *Client) DialEarlyConn(conn net.Conn, destination M.Socksaddr) (net.Conn, error) {
 	return c.prepareConn(NewConn(conn, c.key, vmess.CommandTCP, destination, c.flow), conn)
-}
-
-func (c *Client) DialEarlyConnWithBase(conn net.Conn, baseConn net.Conn, destination M.Socksaddr) (net.Conn, error) {
-	return c.DialEarlyConnWithOptions(conn, baseConn, destination, true)
-}
-
-func (c *Client) DialEarlyConnWithOptions(conn net.Conn, baseConn net.Conn, destination M.Socksaddr, canSplice bool) (net.Conn, error) {
-	return c.prepareConnWithOptions(NewConn(conn, c.key, vmess.CommandTCP, destination, c.flow), baseConn, canSplice)
 }
 
 func (c *Client) DialPacketConn(conn net.Conn, destination M.Socksaddr) (*PacketConn, error) {
@@ -102,7 +88,10 @@ func (c *Client) DialEarlyXUDPPacketConn(conn net.Conn, destination M.Socksaddr)
 	return vmess.NewXUDPConn(protocolConn, destination), common.Error(remoteConn.Write(nil))
 }
 
-var _ N.EarlyConn = (*Conn)(nil)
+var (
+	_ N.EarlyReader = (*Conn)(nil)
+	_ N.EarlyWriter = (*Conn)(nil)
+)
 
 type Conn struct {
 	N.ExtendedConn
@@ -176,14 +165,12 @@ func (c *Conn) WriterReplaceable() bool {
 	return c.requestWritten
 }
 
-func (c *Conn) NeedHandshake() bool {
-	return !c.requestWritten
-}
-
-// it only lets future sing v0.8+ pick up the read-side handshake.
-// or use  EarlyReader/EarlyWriter in sing v0.8+
 func (c *Conn) NeedHandshakeForRead() bool {
 	return !c.responseRead
+}
+
+func (c *Conn) NeedHandshakeForWrite() bool {
+	return !c.requestWritten
 }
 
 func (c *Conn) FrontHeadroom() int {
@@ -203,7 +190,7 @@ func (c *Conn) Upstream() any {
 
 type PacketConn struct {
 	net.Conn
-	access         sync.Mutex
+	writeAccess    sync.Mutex
 	key            [16]byte
 	destination    M.Socksaddr
 	flow           string
@@ -231,18 +218,14 @@ func (c *PacketConn) Read(b []byte) (n int, err error) {
 }
 
 func (c *PacketConn) Write(b []byte) (n int, err error) {
+	c.writeAccess.Lock()
+	defer c.writeAccess.Unlock()
 	if !c.requestWritten {
-		c.access.Lock()
-		if c.requestWritten {
-			c.access.Unlock()
-		} else {
-			err = WritePacketRequest(c.Conn, Request{c.key, vmess.CommandUDP, c.destination, c.flow}, nil)
-			if err == nil {
-				n = len(b)
-			}
-			c.requestWritten = true
-			c.access.Unlock()
+		err = WritePacketRequest(c.Conn, Request{c.key, vmess.CommandUDP, c.destination, c.flow}, nil)
+		if err != nil {
+			return
 		}
+		c.requestWritten = true
 	}
 	err = binary.Write(c.Conn, binary.BigEndian, uint16(len(b)))
 	if err != nil {
@@ -253,18 +236,14 @@ func (c *PacketConn) Write(b []byte) (n int, err error) {
 
 func (c *PacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
 	defer buffer.Release()
+	c.writeAccess.Lock()
+	defer c.writeAccess.Unlock()
 	dataLen := buffer.Len()
 	binary.BigEndian.PutUint16(buffer.ExtendHeader(2), uint16(dataLen))
 	if !c.requestWritten {
-		c.access.Lock()
-		if c.requestWritten {
-			c.access.Unlock()
-		} else {
-			err := WritePacketRequest(c.Conn, Request{c.key, vmess.CommandUDP, c.destination, c.flow}, buffer.Bytes())
-			c.requestWritten = true
-			c.access.Unlock()
-			return err
-		}
+		err := WritePacketRequest(c.Conn, Request{c.key, vmess.CommandUDP, c.destination, c.flow}, buffer.Bytes())
+		c.requestWritten = true
+		return err
 	}
 	return common.Error(c.Conn.Write(buffer.Bytes()))
 }

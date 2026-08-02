@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
+	"sync"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
@@ -13,11 +14,12 @@ import (
 	N "github.com/sagernet/sing/common/network"
 )
 
-var _ N.EarlyConn = (*XUDPConn)(nil)
+var _ N.EarlyWriter = (*XUDPConn)(nil)
 
 type XUDPConn struct {
 	net.Conn
 	writer         N.ExtendedWriter
+	writeAccess    sync.Mutex
 	destination    M.Socksaddr
 	requestWritten bool
 }
@@ -135,6 +137,8 @@ func (c *XUDPConn) frontHeadroom(addrLen int) int {
 }
 
 func (c *XUDPConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
+	c.writeAccess.Lock()
+	defer c.writeAccess.Unlock()
 	dataLen := buffer.Len()
 	addrLen := M.SocksaddrSerializer.AddrPortLen(destination)
 	if !c.requestWritten {
@@ -174,7 +178,7 @@ func (c *XUDPConn) FrontHeadroom() int {
 	return c.frontHeadroom(M.MaxSocksaddrLength)
 }
 
-func (c *XUDPConn) NeedHandshake() bool {
+func (c *XUDPConn) NeedHandshakeForWrite() bool {
 	return !c.requestWritten
 }
 
