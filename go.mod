@@ -1,6 +1,6 @@
 module github.com/sagernet/sing-vmess
 
-go 1.20
+go 1.27.0
 
 require (
 	github.com/gofrs/uuid/v5 v5.3.2
