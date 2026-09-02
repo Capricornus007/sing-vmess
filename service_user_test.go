@@ -10,6 +10,8 @@ import (
 )
 
 func TestServiceUpdateUsersClosesOnlyRemovedUsers(t *testing.T) {
+	t.Parallel()
+
 	service := NewService[string](nil)
 	if err := service.UpdateUsers(
 		[]string{"retained", "removed"},
@@ -47,6 +49,8 @@ func TestServiceUpdateUsersClosesOnlyRemovedUsers(t *testing.T) {
 }
 
 func TestServiceRejectsConnectionFromStaleUserSnapshot(t *testing.T) {
+	t.Parallel()
+
 	service := NewService[string](nil)
 	const userID = "64c8f005-09d8-4de1-b4ea-f3af2f8c0ca1"
 	if err := service.UpdateUsers([]string{"user"}, []string{userID}, []int{0}); err != nil {
@@ -65,6 +69,8 @@ func TestServiceRejectsConnectionFromStaleUserSnapshot(t *testing.T) {
 }
 
 func TestTrackedConnectionCleanupIsIdempotent(t *testing.T) {
+	t.Parallel()
+
 	service := NewService[string](nil)
 	if err := service.UpdateUsers(
 		[]string{"user"},
@@ -101,6 +107,8 @@ func TestTrackedConnectionCleanupIsIdempotent(t *testing.T) {
 }
 
 func TestServiceConcurrentUserUpdatesAndConnectionTracking(t *testing.T) {
+	t.Parallel()
+
 	service := NewService[string](nil)
 	const userID = "64c8f005-09d8-4de1-b4ea-f3af2f8c0ca1"
 	if err := service.UpdateUsers([]string{"user"}, []string{userID}, []int{0}); err != nil {

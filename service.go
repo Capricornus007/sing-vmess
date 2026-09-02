@@ -514,7 +514,7 @@ func (c *rawServerConn) writeResponse() error {
 		headerCipher.Seal(responseBuffer.Index(headerIndex), headerNonce, responseBuffer.From(headerIndex), nil)
 		responseBuffer.Extend(CipherOverhead)
 
-		_, err := c.Conn.Write(responseBuffer.Bytes())
+		_, err := c.Write(responseBuffer.Bytes())
 		if err != nil {
 			return err
 		}

@@ -216,7 +216,7 @@ func (c *rawClientConn) writeHandshake(payload []byte) error {
 		common.Must(binary.Write(timeHash, binary.BigEndian, timestamp))
 		common.Must(binary.Write(timeHash, binary.BigEndian, timestamp))
 		common.Must(binary.Write(timeHash, binary.BigEndian, timestamp))
-		newAesStream(c.key[:], timeHash.Sum(nil), cipher.NewCFBEncrypter).XORKeyStream(headerBuffer.Bytes(), headerBuffer.Bytes())
+		newAesStream(c.key[:], timeHash.Sum(nil), cipher.NewCFBEncrypter).XORKeyStream(headerBuffer.Bytes(), headerBuffer.Bytes()) //nolint:staticcheck // VMess header mandates CFB
 
 		var writer io.Writer
 		var bufferedWriter *bufio.BufferedWriter
@@ -226,7 +226,7 @@ func (c *rawClientConn) writeHandshake(payload []byte) error {
 			writer = bufferedWriter
 		} else {
 			writer = c.Conn
-			_, err = c.Conn.Write(requestBuffer.Bytes())
+			_, err = c.Write(requestBuffer.Bytes())
 		}
 		if err != nil {
 			return err

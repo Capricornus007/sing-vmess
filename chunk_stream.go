@@ -17,7 +17,8 @@ type StreamReader struct {
 func NewStreamReader(upstream io.Reader, key []byte, iv []byte) *StreamReader {
 	return &StreamReader{
 		upstream: bufio.NewExtendedReader(upstream),
-		cipher:   newAesStream(key, iv, cipher.NewCFBDecrypter),
+		// VMess legacy stream cipher mandates CFB; cannot migrate to AEAD.
+		cipher: newAesStream(key, iv, cipher.NewCFBDecrypter), //nolint:staticcheck
 	}
 }
 
@@ -51,7 +52,8 @@ type StreamWriter struct {
 func NewStreamWriter(upstream io.Writer, key []byte, iv []byte) *StreamWriter {
 	return &StreamWriter{
 		upstream: bufio.NewExtendedWriter(upstream),
-		cipher:   newAesStream(key, iv, cipher.NewCFBEncrypter),
+		// VMess legacy stream cipher mandates CFB; cannot migrate to AEAD.
+		cipher: newAesStream(key, iv, cipher.NewCFBEncrypter), //nolint:staticcheck
 	}
 }
 
