@@ -1,22 +1,24 @@
-version: "1"
+version: "2"
 
 linters:
-  disable-all: true
+  default: none
   enable:
-    - gofumpt
     - govet
-    - gci
     - staticcheck
     - paralleltest
     - ineffassign
 
-linters-settings:
-  gci:
-    custom-order: true
-    sections:
-      - standard
-      - prefix(github.com/sagernet/)
-      - default
+formatters:
+  enable:
+    - gofumpt
+    - gci
+  settings:
+    gci:
+      custom-order: true
+      sections:
+        - standard
+        - prefix(github.com/sagernet/)
+        - default
 
 run:
   go: "1.23"
