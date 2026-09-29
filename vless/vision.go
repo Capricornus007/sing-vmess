@@ -58,6 +58,8 @@ type VisionConn struct {
 	remainingContent       int
 	remainingPadding       int
 	currentCommand         byte
+	paddingHeader          [5]byte
+	paddingHeaderLen       int
 	directRead             bool
 	remainingBuffers       []*buf.Buffer
 }
@@ -255,9 +257,11 @@ func (c *VisionConn) filterTLS(buffers [][]byte) {
 					c.isTLS12orAbove = true
 					c.remainingServerHello = (int32(buffer[3])<<8 | int32(buffer[4])) + 5
 					if len(buffer) >= 79 && c.remainingServerHello >= 79 {
-						sessionIdLen := int32(buffer[43])
-						cipherSuite := buffer[43+sessionIdLen+1 : 43+sessionIdLen+3]
-						c.cipher = uint16(cipherSuite[0])<<8 | uint16(cipherSuite[1])
+						sessionIdLen := int(buffer[43])
+						if len(buffer) >= 43+sessionIdLen+3 {
+							cipherSuite := buffer[43+sessionIdLen+1 : 43+sessionIdLen+3]
+							c.cipher = uint16(cipherSuite[0])<<8 | uint16(cipherSuite[1])
+						}
 					} else {
 						c.logger.Trace("XtlsFilterTls short server hello, tls 1.2 or older? ", len(buffer), " ", c.remainingServerHello)
 					}
@@ -350,11 +354,16 @@ func (c *VisionConn) unPadding(buffer []byte) []*buf.Buffer {
 				buffers = append(buffers, buf.As(buffer[bufferIndex:]).ToOwned())
 				break
 			} else {
-				paddingInfo := buffer[bufferIndex : bufferIndex+5]
-				c.currentCommand = paddingInfo[0]
-				c.remainingContent = int(paddingInfo[1])<<8 | int(paddingInfo[2])
-				c.remainingPadding = int(paddingInfo[3])<<8 | int(paddingInfo[4])
-				bufferIndex += 5
+				headerLen := copy(c.paddingHeader[c.paddingHeaderLen:], buffer[bufferIndex:])
+				c.paddingHeaderLen += headerLen
+				bufferIndex += headerLen
+				if c.paddingHeaderLen < len(c.paddingHeader) {
+					break
+				}
+				c.paddingHeaderLen = 0
+				c.currentCommand = c.paddingHeader[0]
+				c.remainingContent = int(c.paddingHeader[1])<<8 | int(c.paddingHeader[2])
+				c.remainingPadding = int(c.paddingHeader[3])<<8 | int(c.paddingHeader[4])
 				c.logger.Trace("Xtls Unpadding new block ", bufferIndex, " ", c.remainingContent, " padding ", c.remainingPadding, " ", c.currentCommand)
 			}
 		} else if c.remainingContent > 0 {
