@@ -103,91 +103,94 @@ func NewVisionConn(conn net.Conn, tlsConn net.Conn, userUUID [16]byte, logger lo
 }
 
 func (c *VisionConn) Read(p []byte) (n int, err error) {
-	for len(c.remainingBuffers) > 0 {
-		newN, _ := c.remainingBuffers[0].Read(p[n:])
-		if c.remainingBuffers[0].IsEmpty() {
-			c.remainingBuffers[0].Release()
-			c.remainingBuffers = c.remainingBuffers[1:]
+	for {
+		n = 0
+		for len(c.remainingBuffers) > 0 {
+			newN, _ := c.remainingBuffers[0].Read(p[n:])
+			if c.remainingBuffers[0].IsEmpty() {
+				c.remainingBuffers[0].Release()
+				c.remainingBuffers = c.remainingBuffers[1:]
+			}
+			n += newN
+			if n == len(p) {
+				break
+			}
 		}
-		n += newN
-		if n == len(p) {
-			break
-		}
-	}
-	if n > 0 {
-		return
-	}
-	if c.directRead {
-		return c.netConn.Read(p)
-	}
-	var bufferBytes []byte
-	var chunkBuffer *buf.Buffer
-	if len(p) > xrayChunkSize {
-		n, err = c.Conn.Read(p)
-		if err != nil {
+		if n > 0 {
 			return
 		}
-		bufferBytes = p[:n]
-	} else {
-		chunkBuffer, err = c.reader.ReadChunk()
-		if err != nil {
-			return 0, err
+		if c.directRead {
+			return c.netConn.Read(p)
 		}
-		bufferBytes = chunkBuffer.Bytes()
-	}
-	if c.withinPaddingBuffers || c.numberOfPacketToFilter > 0 {
-		buffers := c.unPadding(bufferBytes)
-		if chunkBuffer != nil {
-			chunkBuffer.Reset()
+		var bufferBytes []byte
+		var chunkBuffer *buf.Buffer
+		if len(p) > xrayChunkSize {
+			n, err = c.Conn.Read(p)
+			if err != nil {
+				return
+			}
+			bufferBytes = p[:n]
+		} else {
+			chunkBuffer, err = c.reader.ReadChunk()
+			if err != nil {
+				return 0, err
+			}
+			bufferBytes = chunkBuffer.Bytes()
 		}
-		if c.remainingContent == 0 && c.remainingPadding == 0 {
-			if c.currentCommand == commandPaddingEnd {
-				c.withinPaddingBuffers = false
-				c.remainingContent = -1
-				c.remainingPadding = -1
-			} else if c.currentCommand == commandPaddingDirect {
-				c.withinPaddingBuffers = false
-				c.directRead = true
+		if c.withinPaddingBuffers || c.numberOfPacketToFilter > 0 {
+			buffers := c.unPadding(bufferBytes)
+			if chunkBuffer != nil {
+				chunkBuffer.Reset()
+			}
+			if c.remainingContent == 0 && c.remainingPadding == 0 {
+				if c.currentCommand == commandPaddingEnd {
+					c.withinPaddingBuffers = false
+					c.remainingContent = -1
+					c.remainingPadding = -1
+				} else if c.currentCommand == commandPaddingDirect {
+					c.withinPaddingBuffers = false
+					c.directRead = true
 
-				inputBuffer, err := io.ReadAll(c.input)
-				if err != nil {
-					return 0, err
+					inputBuffer, err := io.ReadAll(c.input)
+					if err != nil {
+						return 0, err
+					}
+					buffers = append(buffers, buf.As(inputBuffer))
+
+					rawInputBuffer, err := io.ReadAll(c.rawInput)
+					if err != nil {
+						return 0, err
+					}
+
+					buffers = append(buffers, buf.As(rawInputBuffer))
+
+					c.logger.Trace("XtlsRead readV")
+				} else if c.currentCommand == commandPaddingContinue {
+					c.withinPaddingBuffers = true
+				} else {
+					return 0, E.New("unknown command ", c.currentCommand)
 				}
-				buffers = append(buffers, buf.As(inputBuffer))
-
-				rawInputBuffer, err := io.ReadAll(c.rawInput)
-				if err != nil {
-					return 0, err
-				}
-
-				buffers = append(buffers, buf.As(rawInputBuffer))
-
-				c.logger.Trace("XtlsRead readV")
-			} else if c.currentCommand == commandPaddingContinue {
+			} else if c.remainingContent > 0 || c.remainingPadding > 0 {
 				c.withinPaddingBuffers = true
 			} else {
-				return 0, E.New("unknown command ", c.currentCommand)
+				c.withinPaddingBuffers = false
 			}
-		} else if c.remainingContent > 0 || c.remainingPadding > 0 {
-			c.withinPaddingBuffers = true
+			if c.numberOfPacketToFilter > 0 {
+				c.filterTLS(buf.ToSliceMulti(buffers))
+			}
+			c.remainingBuffers = buffers
+			continue
 		} else {
-			c.withinPaddingBuffers = false
+			if c.numberOfPacketToFilter > 0 {
+				c.filterTLS([][]byte{bufferBytes})
+			}
+			if chunkBuffer != nil {
+				c.remainingBuffers = append(c.remainingBuffers, buf.As(chunkBuffer.Bytes()))
+				chunkBuffer.Reset() // chunkBuffer should not be release and only reused after c.remainingBuffers be emptied, so must reset at here
+				continue
+			}
+			return
 		}
-		if c.numberOfPacketToFilter > 0 {
-			c.filterTLS(buf.ToSliceMulti(buffers))
-		}
-		c.remainingBuffers = buffers
-		return c.Read(p)
-	} else {
-		if c.numberOfPacketToFilter > 0 {
-			c.filterTLS([][]byte{bufferBytes})
-		}
-		if chunkBuffer != nil {
-			c.remainingBuffers = append(c.remainingBuffers, buf.As(chunkBuffer.Bytes()))
-			chunkBuffer.Reset() // chunkBuffer should not be release and only reused after c.remainingBuffers be emptied, so must reset at here
-			return c.Read(p)
-		}
-		return
 	}
 }
 
