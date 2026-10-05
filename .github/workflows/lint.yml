@@ -37,5 +37,10 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: latest
+          # 釘死版本：`latest` 會隨上游漂移，新版把同一條 finding 記在不同行
+          # （例如嵌入欄位選擇器會記在欄位宣告行而非結構體起始行），
+          # 讓行內 //nolint 看起來「失效」。此處必須與本機 `golangci-lint version`
+          # 同號（2.13.2），本機 0 issues 才等於 CI 0 issues。
+          # 升級時：先在本機裝同版重跑 `golangci-lint run ./...`，確認 nolint 位置仍然命中，才改這裡。
+          version: v2.13.2
           args: .
