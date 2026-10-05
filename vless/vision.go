@@ -20,15 +20,15 @@ import (
 	N "github.com/sagernet/sing/common/network"
 )
 
-var tlsRegistry []func(conn net.Conn) (loaded bool, netConn net.Conn, reflectType reflect.Type, reflectPointer uintptr)
+var tlsRegistry []func(conn net.Conn) (loaded bool, netConn net.Conn, reflectType reflect.Type, reflectPointer unsafe.Pointer)
 
 func init() {
-	tlsRegistry = append(tlsRegistry, func(conn net.Conn) (loaded bool, netConn net.Conn, reflectType reflect.Type, reflectPointer uintptr) {
+	tlsRegistry = append(tlsRegistry, func(conn net.Conn) (loaded bool, netConn net.Conn, reflectType reflect.Type, reflectPointer unsafe.Pointer) {
 		tlsConn, loaded := N.CastReader[*tls.Conn](conn)
 		if !loaded {
 			return
 		}
-		return true, tlsConn.NetConn(), reflect.TypeOf(tlsConn).Elem(), uintptr(unsafe.Pointer(tlsConn))
+		return true, tlsConn.NetConn(), reflect.TypeOf(tlsConn).Elem(), unsafe.Pointer(tlsConn)
 	})
 }
 
@@ -68,7 +68,7 @@ func NewVisionConn(conn net.Conn, tlsConn net.Conn, userUUID [16]byte, logger lo
 	var (
 		loaded         bool
 		reflectType    reflect.Type
-		reflectPointer uintptr
+		reflectPointer unsafe.Pointer
 		netConn        net.Conn
 	)
 	for _, tlsCreator := range tlsRegistry {
@@ -86,8 +86,8 @@ func NewVisionConn(conn net.Conn, tlsConn net.Conn, userUUID [16]byte, logger lo
 		Conn:     conn,
 		reader:   bufio.NewChunkReader(conn, xrayChunkSize),
 		writer:   bufio.NewVectorisedWriter(conn),
-		input:    (*bytes.Reader)(unsafe.Pointer(reflectPointer + input.Offset)),
-		rawInput: (*bytes.Buffer)(unsafe.Pointer(reflectPointer + rawInput.Offset)),
+		input:    (*bytes.Reader)(unsafe.Add(reflectPointer, input.Offset)),
+		rawInput: (*bytes.Buffer)(unsafe.Add(reflectPointer, rawInput.Offset)),
 		netConn:  netConn,
 		logger:   logger,
 
@@ -143,11 +143,12 @@ func (c *VisionConn) Read(p []byte) (n int, err error) {
 				chunkBuffer.Reset()
 			}
 			if c.remainingContent == 0 && c.remainingPadding == 0 {
-				if c.currentCommand == commandPaddingEnd {
+				switch c.currentCommand {
+				case commandPaddingEnd:
 					c.withinPaddingBuffers = false
 					c.remainingContent = -1
 					c.remainingPadding = -1
-				} else if c.currentCommand == commandPaddingDirect {
+				case commandPaddingDirect:
 					c.withinPaddingBuffers = false
 					c.directRead = true
 
@@ -165,9 +166,9 @@ func (c *VisionConn) Read(p []byte) (n int, err error) {
 					buffers = append(buffers, buf.As(rawInputBuffer))
 
 					c.logger.Trace("XtlsRead readV")
-				} else if c.currentCommand == commandPaddingContinue {
+				case commandPaddingContinue:
 					c.withinPaddingBuffers = true
-				} else {
+				default:
 					return 0, E.New("unknown command ", c.currentCommand)
 				}
 			} else if c.remainingContent > 0 || c.remainingPadding > 0 {
@@ -206,7 +207,7 @@ func (c *VisionConn) Write(p []byte) (n int, err error) {
 		var specIndex int
 		for i, buffer := range buffers {
 			if c.isTLS && buffer.Len() > 6 && bytes.Equal(tlsApplicationDataStart, buffer.To(3)) {
-				var command byte = commandPaddingEnd
+				command := commandPaddingEnd
 				if c.enableXTLS {
 					c.directWrite = true
 					specIndex = i

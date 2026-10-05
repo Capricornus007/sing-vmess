@@ -177,8 +177,8 @@ func extractTLSInfo(tlsConn net.Conn) (*visionConnInfo, error) {
 
 			inputField, _ := reflectType.FieldByName("input")
 			rawInputField, _ := reflectType.FieldByName("rawInput")
-			info.input = (*bytes.Reader)(unsafe.Pointer(reflectPointer + inputField.Offset))
-			info.rawInput = (*bytes.Buffer)(unsafe.Pointer(reflectPointer + rawInputField.Offset))
+			info.input = (*bytes.Reader)(unsafe.Add(reflectPointer, inputField.Offset))
+			info.rawInput = (*bytes.Buffer)(unsafe.Add(reflectPointer, rawInputField.Offset))
 			return info, nil
 		}
 	}
@@ -188,7 +188,7 @@ func extractTLSInfo(tlsConn net.Conn) (*visionConnInfo, error) {
 
 func extractInputFields(encConn net.Conn, info *visionConnInfo) error {
 	reflectType := reflect.TypeOf(encConn).Elem()
-	reflectPointer := uintptr(unsafe.Pointer(reflect.ValueOf(encConn).Pointer()))
+	reflectPointer := reflect.ValueOf(encConn).UnsafePointer()
 
 	inputField, inputOk := reflectType.FieldByName("input")
 	rawInputField, rawInputOk := reflectType.FieldByName("rawInput")
@@ -197,8 +197,8 @@ func extractInputFields(encConn net.Conn, info *visionConnInfo) error {
 		return E.New("vision: encryption layer missing input/rawInput fields")
 	}
 
-	info.input = (*bytes.Reader)(unsafe.Pointer(reflectPointer + inputField.Offset))
-	info.rawInput = (*bytes.Buffer)(unsafe.Pointer(reflectPointer + rawInputField.Offset))
+	info.input = (*bytes.Reader)(unsafe.Add(reflectPointer, inputField.Offset))
+	info.rawInput = (*bytes.Buffer)(unsafe.Add(reflectPointer, rawInputField.Offset))
 	return nil
 }
 
@@ -208,8 +208,8 @@ func extractInputFieldsFromTLS(tlsConn net.Conn, info *visionConnInfo) error {
 		if loaded {
 			inputField, _ := reflectType.FieldByName("input")
 			rawInputField, _ := reflectType.FieldByName("rawInput")
-			info.input = (*bytes.Reader)(unsafe.Pointer(reflectPointer + inputField.Offset))
-			info.rawInput = (*bytes.Buffer)(unsafe.Pointer(reflectPointer + rawInputField.Offset))
+			info.input = (*bytes.Reader)(unsafe.Add(reflectPointer, inputField.Offset))
+			info.rawInput = (*bytes.Buffer)(unsafe.Add(reflectPointer, rawInputField.Offset))
 			return nil
 		}
 	}
@@ -220,7 +220,7 @@ func isEncryptionConn(conn net.Conn) bool {
 	if enc, ok := conn.(EncryptionConn); ok {
 		return enc.IsEncryptionLayer()
 	}
-	if reflect.TypeOf(conn).Kind() == reflect.Ptr {
+	if reflect.TypeOf(conn).Kind() == reflect.Pointer {
 		typeName := reflect.TypeOf(conn).Elem().Name()
 		return typeName == "CommonConn" || typeName == "XorConn"
 	}
@@ -228,7 +228,7 @@ func isEncryptionConn(conn net.Conn) bool {
 }
 
 func isXorConn(conn net.Conn) bool {
-	if reflect.TypeOf(conn).Kind() == reflect.Ptr {
+	if reflect.TypeOf(conn).Kind() == reflect.Pointer {
 		return reflect.TypeOf(conn).Elem().Name() == "XorConn"
 	}
 	return false
@@ -261,7 +261,7 @@ func findEncryptionInStack(conn net.Conn) net.Conn {
 
 func getNextConn(conn net.Conn) net.Conn {
 	connValue := reflect.ValueOf(conn)
-	if connValue.Kind() == reflect.Ptr {
+	if connValue.Kind() == reflect.Pointer {
 		connElem := connValue.Elem()
 		if connElem.IsValid() && connElem.Kind() == reflect.Struct {
 			if extField := connElem.FieldByName("ExtendedConn"); extField.IsValid() && !extField.IsNil() {
@@ -428,11 +428,12 @@ func (c *enhancedVisionConn) Read(p []byte) (n int, err error) {
 			chunkBuffer.Reset()
 		}
 		if c.remainingContent == 0 && c.remainingPadding == 0 {
-			if c.currentCommand == commandPaddingEnd {
+			switch c.currentCommand {
+			case commandPaddingEnd:
 				c.withinPaddingBuffers = false
 				c.remainingContent = -1
 				c.remainingPadding = -1
-			} else if c.currentCommand == commandPaddingDirect {
+			case commandPaddingDirect:
 				if !c.canSplice {
 					c.withinPaddingBuffers = false
 					c.remainingContent = -1
@@ -457,9 +458,9 @@ func (c *enhancedVisionConn) Read(p []byte) (n int, err error) {
 				buffers = append(buffers, buf.As(rawInputBuffer))
 
 				c.logger.Trace("XtlsRead readV")
-			} else if c.currentCommand == commandPaddingContinue {
+			case commandPaddingContinue:
 				c.withinPaddingBuffers = true
-			} else {
+			default:
 				return 0, E.New("unknown command ", c.currentCommand)
 			}
 		} else if c.remainingContent > 0 || c.remainingPadding > 0 || c.paddingUUIDLen > 0 || c.paddingHeaderLen > 0 {
@@ -516,7 +517,7 @@ func (c *enhancedVisionConn) Write(p []byte) (n int, err error) {
 				buffers[i] = c.padding(buffer, commandPaddingEnd)
 				break
 			}
-			var command byte = commandPaddingContinue
+			command := commandPaddingContinue
 			if i == len(buffers)-1 && !c.isPadding {
 				command = commandPaddingEnd
 				if switchToDirectAfterWrite {
