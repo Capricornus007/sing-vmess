@@ -69,10 +69,12 @@ func (c *captureConn) RemoteAddr() net.Addr             { return nil }
 func (c *captureConn) SetDeadline(time.Time) error      { return nil }
 func (c *captureConn) SetReadDeadline(time.Time) error  { return nil }
 func (c *captureConn) SetWriteDeadline(time.Time) error { return nil }
+
 func (c *captureConn) Read(p []byte) (int, error) {
 	c.readCount++
 	return c.Buffer.Read(p)
 }
+
 func (c *captureConn) Write(p []byte) (int, error) {
 	if c.err != nil {
 		return 0, c.err
@@ -87,10 +89,11 @@ func visionPaddingFrame(userUUID [16]byte, command byte, payload []byte) []byte 
 }
 
 func TestVisionReadKeepsTransportWhenSplicingDisabled(t *testing.T) {
+	t.Parallel()
 	userUUID := [16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
 	outerConn := &captureConn{}
 	_, _ = outerConn.Buffer.Write(visionPaddingFrame(userUUID, commandPaddingDirect, nil))
-	_, _ = outerConn.Buffer.WriteString("stream")
+	_, _ = outerConn.WriteString("stream")
 	rawConn := &captureConn{}
 	conn := &enhancedVisionConn{
 		Conn:                 outerConn,
@@ -123,6 +126,7 @@ func TestVisionReadKeepsTransportWhenSplicingDisabled(t *testing.T) {
 }
 
 func TestVisionReadKeepsFragmentedTransportWhenSplicingDisabled(t *testing.T) {
+	t.Parallel()
 	userUUID := [16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
 	frame := visionPaddingFrame(userUUID, commandPaddingDirect, nil)
 	outerConn := &fragmentedCaptureConn{
@@ -162,6 +166,7 @@ func TestVisionReadKeepsFragmentedTransportWhenSplicingDisabled(t *testing.T) {
 }
 
 func TestVisionSetDirectConnIgnoredWhenSplicingDisabled(t *testing.T) {
+	t.Parallel()
 	conn := &enhancedVisionConn{}
 	conn.SetDirectConn(&captureConn{})
 	if conn.directConn != nil {
@@ -170,11 +175,12 @@ func TestVisionSetDirectConnIgnoredWhenSplicingDisabled(t *testing.T) {
 }
 
 func TestVisionReadDirectWhenSplicingEnabled(t *testing.T) {
+	t.Parallel()
 	userUUID := [16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
 	outerConn := &captureConn{}
 	_, _ = outerConn.Buffer.Write(visionPaddingFrame(userUUID, commandPaddingDirect, nil))
 	rawConn := &captureConn{}
-	_, _ = rawConn.Buffer.WriteString("raw")
+	_, _ = rawConn.WriteString("raw")
 	conn := &enhancedVisionConn{
 		Conn:                 outerConn,
 		reader:               bufio.NewChunkReader(outerConn, xrayChunkSize),
@@ -204,6 +210,7 @@ func TestVisionReadDirectWhenSplicingEnabled(t *testing.T) {
 }
 
 func TestVisionWriteEndsPaddingWhenSplicingDisabled(t *testing.T) {
+	t.Parallel()
 	initialWriter := &captureVectorisedWriter{}
 	conn := &enhancedVisionConn{
 		writer:           initialWriter,
@@ -232,6 +239,7 @@ func TestVisionWriteEndsPaddingWhenSplicingDisabled(t *testing.T) {
 }
 
 func TestVisionWriteFragmentedRecordStaysFramed(t *testing.T) {
+	t.Parallel()
 	initialWriter := &captureVectorisedWriter{}
 	directConn := &captureConn{}
 	conn := &enhancedVisionConn{
@@ -269,6 +277,7 @@ func TestVisionWriteFragmentedRecordStaysFramed(t *testing.T) {
 }
 
 func TestVisionWriteDirectTransitionStartsNextWrite(t *testing.T) {
+	t.Parallel()
 	initialWriter := &captureVectorisedWriter{}
 	directConn := &captureConn{}
 	conn := &enhancedVisionConn{
@@ -312,6 +321,7 @@ func TestVisionWriteDirectTransitionStartsNextWrite(t *testing.T) {
 }
 
 func TestVisionWriteDirectTransitionWaitsForFramedWrite(t *testing.T) {
+	t.Parallel()
 	expectedErr := errors.New("framed write failed")
 	initialWriter := &captureVectorisedWriter{err: expectedErr}
 	directConn := &captureConn{}
@@ -348,6 +358,7 @@ func TestVisionWriteDirectTransitionWaitsForFramedWrite(t *testing.T) {
 }
 
 func TestVisionPaddingReleasesConsumedInputBuffer(t *testing.T) {
+	t.Parallel()
 	conn := &enhancedVisionConn{logger: logger.NOP()}
 	input := buf.NewSize(16)
 	if _, err := input.Write([]byte("payload")); err != nil {
@@ -370,6 +381,7 @@ func TestVisionPaddingReleasesConsumedInputBuffer(t *testing.T) {
 }
 
 func TestVisionUnPaddingFragmentedHeader(t *testing.T) {
+	t.Parallel()
 	userUUID := [16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
 	conn := &enhancedVisionConn{
 		logger:               logger.NOP(),
@@ -411,6 +423,7 @@ func TestVisionUnPaddingFragmentedHeader(t *testing.T) {
 }
 
 func TestVisionUnPaddingPlainFragmentMismatchReleasesOwnedBuffer(t *testing.T) {
+	t.Parallel()
 	userUUID := [16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
 	conn := &enhancedVisionConn{
 		logger:           logger.NOP(),

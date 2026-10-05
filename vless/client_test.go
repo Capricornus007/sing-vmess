@@ -11,6 +11,7 @@ import (
 )
 
 func TestPacketConnConcurrentWritesPreservePacketBoundaries(t *testing.T) {
+	t.Parallel()
 	underlying := newReorderingConn()
 	conn := &PacketConn{
 		Conn:           underlying,

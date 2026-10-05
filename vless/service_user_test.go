@@ -18,6 +18,7 @@ import (
 )
 
 func TestServiceUpdateUsersClosesOnlyRemovedUsers(t *testing.T) {
+	t.Parallel()
 	service := NewService[string](nil, nil)
 	service.UpdateUsers(
 		[]string{"retained", "removed"},
@@ -50,6 +51,7 @@ func TestServiceUpdateUsersClosesOnlyRemovedUsers(t *testing.T) {
 }
 
 func TestServiceEntryPointsTrackAcceptedConnections(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		name   string
 		accept func(*Service[string], net.Conn) error
@@ -68,6 +70,7 @@ func TestServiceEntryPointsTrackAcceptedConnections(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			const userID = "64c8f005-09d8-4de1-b4ea-f3af2f8c0ca1"
 			handler := &vlessTestHandler{}
 			service := NewService[string](nil, handler)
@@ -96,6 +99,7 @@ func TestServiceEntryPointsTrackAcceptedConnections(t *testing.T) {
 }
 
 func TestServiceRejectsConnectionFromStaleUserSnapshot(t *testing.T) {
+	t.Parallel()
 	service := NewService[string](nil, nil)
 	const userID = "64c8f005-09d8-4de1-b4ea-f3af2f8c0ca1"
 	service.UpdateUsers([]string{"user"}, []string{userID}, []string{""})
@@ -112,6 +116,7 @@ func TestServiceRejectsConnectionFromStaleUserSnapshot(t *testing.T) {
 }
 
 func TestServiceMuxReturnRemovesTrackedConnection(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		name   string
 		accept func(*Service[string], net.Conn) error
@@ -130,6 +135,7 @@ func TestServiceMuxReturnRemovesTrackedConnection(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			const userID = "64c8f005-09d8-4de1-b4ea-f3af2f8c0ca1"
 			service := NewService[string](nil, &vlessTestHandler{})
 			service.UpdateUsers([]string{"user"}, []string{userID}, []string{""})
@@ -149,6 +155,7 @@ func TestServiceMuxReturnRemovesTrackedConnection(t *testing.T) {
 }
 
 func TestServiceConcurrentUserUpdatesAndConnectionTracking(t *testing.T) {
+	t.Parallel()
 	service := NewService[string](nil, nil)
 	const userID = "64c8f005-09d8-4de1-b4ea-f3af2f8c0ca1"
 	service.UpdateUsers([]string{"user"}, []string{userID}, []string{""})
