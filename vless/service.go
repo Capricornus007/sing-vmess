@@ -280,7 +280,7 @@ func (c *serverPacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) 
 	if err != nil {
 		return
 	}
-	if c.destination.IsFqdn() {
+	if c.destination.IsFqdn() { //nolint:staticcheck // IsFqdn 做嚴格域名語法檢查、IsDomain 只判斷欄位非空，兩者語意不同；換掉會改變位址分支行為，不屬 lint 修復範圍
 		addr = c.destination
 	} else {
 		addr = c.destination.UDPAddr()
@@ -290,7 +290,7 @@ func (c *serverPacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) 
 
 func (c *serverPacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	if !c.responseWritten {
-		_, err = c.ExtendedConn.Write([]byte{Version, 0})
+		_, err = c.Write([]byte{Version, 0})
 		if err != nil {
 			return
 		}
@@ -300,7 +300,7 @@ func (c *serverPacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	if err != nil {
 		return
 	}
-	return c.ExtendedConn.Write(p)
+	return c.Write(p)
 }
 
 func (c *serverPacketConn) ReadPacket(buffer *buf.Buffer) (destination M.Socksaddr, err error) {
@@ -321,7 +321,7 @@ func (c *serverPacketConn) ReadPacket(buffer *buf.Buffer) (destination M.Socksad
 
 func (c *serverPacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
 	if !c.responseWritten {
-		_, err := c.ExtendedConn.Write([]byte{Version, 0})
+		_, err := c.Write([]byte{Version, 0})
 		if err != nil {
 			return err
 		}
@@ -329,7 +329,7 @@ func (c *serverPacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksad
 	}
 	packetLen := buffer.Len()
 	binary.BigEndian.PutUint16(buffer.ExtendHeader(2), uint16(packetLen))
-	return c.ExtendedConn.WriteBuffer(buffer)
+	return c.WriteBuffer(buffer)
 }
 
 func (c *serverPacketConn) FrontHeadroom() int {

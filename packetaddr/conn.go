@@ -51,7 +51,7 @@ func (c *PacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 		return
 	}
 	n = copy(p, buffer.Bytes())
-	if destination.IsFqdn() {
+	if destination.IsFqdn() { //nolint:staticcheck // IsFqdn 是嚴格語法校驗、IsDomain 只判非空，語意不同；換掉會改變回傳 addr 的分支行為，屬功能改動不在 lint 修復內
 		addr = destination
 	} else {
 		addr = destination.UDPAddr()
@@ -84,7 +84,7 @@ func (c *PacketConn) ReadPacket(buffer *buf.Buffer) (destination M.Socksaddr, er
 }
 
 func (c *PacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
-	if destination.IsFqdn() {
+	if destination.IsFqdn() { //nolint:staticcheck // 此處是要擋下「序列化器不支援的域名」，維持原有嚴格判定；改 IsDomain 會放寬阻擋範圍、改語意
 		return E.Extend(ErrFqdnUnsupported, destination.Fqdn)
 	}
 	header := buf.With(buffer.ExtendHeader(AddressSerializer.AddrPortLen(destination)))

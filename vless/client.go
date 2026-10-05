@@ -253,7 +253,7 @@ func (c *PacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	if err != nil {
 		return
 	}
-	if c.destination.IsFqdn() {
+	if c.destination.IsFqdn() { //nolint:staticcheck // IsFqdn 是嚴格語法校驗、IsDomain 只判非空，語意不同；改用 IsDomain 會把原本走 UDPAddr 的位址改判成域名，屬功能改動不在 lint 修復內
 		addr = c.destination
 	} else {
 		addr = c.destination.UDPAddr()
