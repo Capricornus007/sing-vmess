@@ -39,9 +39,10 @@ jobs:
       # 舊註解寫「必須與本機同號 v2.13.2，否則新版把同一條 finding 記到不同行、
       # 行內 //nolint 看起來失效」——這個前提不再當理由：真出現行號漂移就去改代碼裡
       # nolint 的位置，不靠降版迴避。x/tools 由 setup-gcl 抬到讀得懂 go tip 的那顆。
-      - name: Install golangci-lint v2.14.0 (with x/tools that reads Go tip)
+      - name: Install golangci-lint v2.15.0 (with x/tools that reads Go tip)
         uses: Capricornus007/repo/.github/actions/setup-gcl@master
         with:
-          version: v2.14.0
+          version: v2.15.0
+          xtools: v0.52.0
       - name: golangci-lint
         run: golangci-lint run .
