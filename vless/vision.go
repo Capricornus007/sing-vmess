@@ -9,6 +9,7 @@ import (
 	"net"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -52,7 +53,7 @@ type VisionConn struct {
 	cipher                 uint16
 	enableXTLS             bool
 	isPadding              bool
-	directWrite            bool
+	directWrite            atomic.Bool
 	writeUUID              bool
 	withinPaddingBuffers   bool
 	remainingContent       int
@@ -209,7 +210,7 @@ func (c *VisionConn) Write(p []byte) (n int, err error) {
 			if c.isTLS && buffer.Len() > 6 && bytes.Equal(tlsApplicationDataStart, buffer.To(3)) {
 				command := commandPaddingEnd
 				if c.enableXTLS {
-					c.directWrite = true
+					c.directWrite.Store(true)
 					specIndex = i
 					command = commandPaddingDirect
 				}
@@ -223,7 +224,7 @@ func (c *VisionConn) Write(p []byte) (n int, err error) {
 			}
 			buffers[i] = c.padding(buffer, commandPaddingContinue)
 		}
-		if c.directWrite {
+		if c.directWrite.Load() {
 			encryptedBuffer := buffers[:specIndex+1]
 			err = c.writer.WriteVectorised(encryptedBuffer)
 			if err != nil {
@@ -244,7 +245,7 @@ func (c *VisionConn) Write(p []byte) (n int, err error) {
 		}
 		return
 	}
-	if c.directWrite {
+	if c.directWrite.Load() {
 		return c.netConn.Write(p)
 	} else {
 		return c.Conn.Write(p)
@@ -391,6 +392,13 @@ func (c *VisionConn) unPadding(buffer []byte) []*buf.Buffer {
 		}
 	}
 	return buffers
+}
+
+func (c *VisionConn) Close() error {
+	if c.directWrite.Load() {
+		return c.netConn.Close()
+	}
+	return c.Conn.Close()
 }
 
 func (c *VisionConn) NeedAdditionalReadDeadline() bool {
